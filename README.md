@@ -8,6 +8,7 @@ A microservice for managing bank transactions, including deposits, withdrawals, 
 - [Technologies Used](#technologies-used)
 - [Installation](#installation)
 - [Configuration](#configuration)
+- [Integration with Other Microservices](#integration-with-other-microservices)
 - [Running the Application](#running-the-application)
 - [API Documentation](#api-documentation)
 - [Project Structure](#project-structure)
@@ -72,7 +73,43 @@ server.port=8085
 # MongoDB Configuration
 spring.data.mongodb.uri=mongodb://localhost:27017
 spring.data.mongodb.database=microservicetransactionsdb
+
+# Microservices Configuration
+microservices.bank-accounts.base-url=http://localhost:8082/api
 ```
+---
+
+
+## Integration with Other Microservices
+
+This microservice connects to the **Bank Account Microservice** to perform operations such as deposits, withdrawals, and transfers. The integration is implemented using **WebClient**, a reactive HTTP client provided by Spring WebFlux.
+
+### Endpoints Used in Bank Account Microservice
+
+The following endpoints are used by the Transaction Microservice to interact with the Bank Account Microservice:
+
+| Endpoint                              | Method | Description                                    |
+|---------------------------------------|--------|------------------------------------------------|
+| `/accounts/{id}`                      | GET    | Retrieves the details of a specific account.   |
+| `/accounts/{id}/deposit?amount={amount}` | PUT    | Deposits a specified amount into an account.   |
+| `/accounts/{id}/withdraw?amount={amount}` | PUT    | Withdraws a specified amount from an account. |
+
+### Configuration
+
+The connection to the **Bank Account Microservice** is configured dynamically using the `application.properties` file. The base URL for the Bank Account Microservice is defined as follows:
+
+```properties
+microservices.bank-accounts.base-url=http://localhost:8082/api
+```
+
+This configuration allows the Transaction Microservice to communicate effectively with the Bank Account Microservice without hardcoding the base URL.
+
+### Bank Account Microservice Repository
+
+The Bank Account Microservice is available in the following repository:
+
+[Bank Account Microservice Repository](https://github.com/BrigitteMendez1302/Java-Proyecto2-BankAccountMicroservice)
+
 
 ---
 
