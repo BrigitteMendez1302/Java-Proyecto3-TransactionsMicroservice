@@ -179,11 +179,11 @@
 						<goals>
 							<goal>report</goal>
 						</goals>
-						<configuration>
-							<includes>
-								<include>com/example/transactionmicroservice/service/impl/**/*.class</include>
-							</includes>
-						</configuration>
+<!--						<configuration>-->
+<!--							<includes>-->
+<!--								<include>com/example/transactionmicroservice/service/impl/**/*.class</include>-->
+<!--							</includes>-->
+<!--						</configuration>-->
 					</execution>
 				</executions>
 				<!-- Umbrales de Cobertura -->

@@ -6,11 +6,13 @@ import com.example.transactionmicroservice.model.BankAccount;
 import com.example.transactionmicroservice.model.Transaction;
 import com.example.transactionmicroservice.model.TransactionType;
 import com.example.transactionmicroservice.repository.TransactionRepository;
+import com.example.transactionmicroservice.service.BankAccountService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
+import org.springframework.data.util.Pair;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 import reactor.core.publisher.Flux;
@@ -34,6 +36,10 @@ class TransactionServiceImplTest {
     @InjectMocks
     private TransactionServiceImpl transactionService;
 
+    @Mock
+    private BankAccountService bankAccountService;
+
+
     @BeforeEach
     void setup() {
         MockitoAnnotations.openMocks(this);
@@ -52,7 +58,7 @@ class TransactionServiceImplTest {
                 .destinationAccountId(accountId)
                 .build();
 
-        when(bankAccountClient.deposit(accountId, amount)).thenReturn(Mono.just(
+        when(bankAccountService.deposit(accountId, amount)).thenReturn(Mono.just(
                 BankAccount.builder()
                         .id(1L)
                         .accountNumber(accountId)
@@ -74,7 +80,7 @@ class TransactionServiceImplTest {
                                 && savedTransaction.getDestinationAccountId().equals(accountId))
                 .verifyComplete();
 
-        verify(bankAccountClient, times(1)).deposit(accountId, amount);
+        verify(bankAccountService, times(1)).deposit(accountId, amount);
         verify(transactionRepository, times(1)).save(any(Transaction.class));
     }
 
@@ -83,16 +89,6 @@ class TransactionServiceImplTest {
         String accountId = "123";
         Double depositAmount = 50.0;
 
-        // Mock the initial state of the account
-        BankAccount initialAccount = BankAccount.builder()
-                .id(1L)
-                .accountNumber(accountId)
-                .balance(BigDecimal.valueOf(300))
-                .accountType(null)
-                .customerId(10L)
-                .build();
-
-        // Mock the updated account after deposit
         BankAccount updatedAccount = BankAccount.builder()
                 .id(1L)
                 .accountNumber(accountId)
@@ -102,7 +98,7 @@ class TransactionServiceImplTest {
                 .build();
 
         // Mocking behavior
-        when(bankAccountClient.deposit(accountId, depositAmount)).thenReturn(Mono.just(updatedAccount));
+        when(bankAccountService.deposit(accountId, depositAmount)).thenReturn(Mono.just(updatedAccount));
         when(transactionRepository.save(any(Transaction.class)))
                 .thenAnswer(invocation -> Mono.just(invocation.getArgument(0)));
 
@@ -118,7 +114,7 @@ class TransactionServiceImplTest {
                 .verifyComplete();
 
         // Verify that the deposit call was made with the correct parameters
-        verify(bankAccountClient, times(1)).deposit(accountId, depositAmount);
+        verify(bankAccountService, times(1)).deposit(accountId, depositAmount);
 
         // Verify that the transaction was saved
         verify(transactionRepository, times(1)).save(any(Transaction.class));
@@ -129,8 +125,8 @@ class TransactionServiceImplTest {
         String accountId = "123";
         Double depositAmount = 50.0;
 
-        // Simulate an error in the BankAccountClient
-        when(bankAccountClient.deposit(accountId, depositAmount))
+        // Simulate an error in the BankAccountService
+        when(bankAccountService.deposit(accountId, depositAmount))
                 .thenReturn(Mono.error(new RuntimeException("Bank service unavailable")));
 
         // Execute the method
@@ -160,7 +156,7 @@ class TransactionServiceImplTest {
                 .build();
 
         // Mock successful deposit but failure in saving the transaction
-        when(bankAccountClient.deposit(accountId, depositAmount)).thenReturn(Mono.just(updatedAccount));
+        when(bankAccountService.deposit(accountId, depositAmount)).thenReturn(Mono.just(updatedAccount));
         when(transactionRepository.save(any(Transaction.class)))
                 .thenReturn(Mono.error(new RuntimeException("Database save error")));
 
@@ -174,7 +170,7 @@ class TransactionServiceImplTest {
                 .verify();
 
         // Verify the deposit call was made
-        verify(bankAccountClient, times(1)).deposit(accountId, depositAmount);
+        verify(bankAccountService, times(1)).deposit(accountId, depositAmount);
 
         // Verify the transaction save attempt was made
         verify(transactionRepository, times(1)).save(any(Transaction.class));
@@ -185,24 +181,15 @@ class TransactionServiceImplTest {
         String accountId = "123";
         Double amount = 50.0;
 
-        BankAccount account = BankAccount.builder()
-                .id(1L)
-                .accountNumber(accountId)
-                .balance(BigDecimal.valueOf(300))
-                .accountType(AccountType.SAVINGS)
-                .customerId(10L)
-                .build();
-
         BankAccount updatedAccount = BankAccount.builder()
                 .id(1L)
                 .accountNumber(accountId)
-                .balance(BigDecimal.valueOf(250))
+                .balance(BigDecimal.valueOf(250)) // Balance after withdrawal
                 .accountType(AccountType.SAVINGS)
                 .customerId(10L)
                 .build();
 
-        when(bankAccountClient.getAccount(accountId)).thenReturn(Mono.just(account));
-        when(bankAccountClient.withdraw(accountId, amount)).thenReturn(Mono.just(updatedAccount));
+        when(bankAccountService.withdraw(accountId, amount)).thenReturn(Mono.just(updatedAccount));
         when(transactionRepository.save(any(Transaction.class)))
                 .thenAnswer(invocation -> Mono.just(invocation.getArgument(0)));
 
@@ -215,7 +202,7 @@ class TransactionServiceImplTest {
                                 transaction.getSourceAccountId().equals(accountId))
                 .verifyComplete();
 
-        verify(bankAccountClient, times(1)).withdraw(accountId, amount);
+        verify(bankAccountService, times(1)).withdraw(accountId, amount);
         verify(transactionRepository, times(1)).save(any(Transaction.class));
     }
 
@@ -224,15 +211,8 @@ class TransactionServiceImplTest {
         String accountId = "123";
         Double amount = 350.0;
 
-        BankAccount account = BankAccount.builder()
-                .id(1L)
-                .accountNumber(accountId)
-                .balance(BigDecimal.valueOf(300))
-                .accountType(AccountType.SAVINGS)
-                .customerId(10L)
-                .build();
-
-        when(bankAccountClient.getAccount(accountId)).thenReturn(Mono.just(account));
+        when(bankAccountService.withdraw(accountId, amount))
+                .thenReturn(Mono.error(new ResponseStatusException(HttpStatus.BAD_REQUEST, "Insufficient balance")));
 
         Mono<Transaction> result = transactionService.withdraw(accountId, amount);
 
@@ -242,70 +222,17 @@ class TransactionServiceImplTest {
                         throwable.getMessage().contains("Insufficient balance"))
                 .verify();
 
-        verify(bankAccountClient, never()).withdraw(anyString(), anyDouble());
+        verify(bankAccountService, times(1)).withdraw(accountId, amount);
         verify(transactionRepository, never()).save(any(Transaction.class));
     }
-
-//    @Test
-//    void withdraw_shouldAllowOverdraftForChecking() {
-//        String accountId = "123";
-//        Double amount = 350.0;
-//
-//        // Configurar un objeto válido de BankAccount para el mock
-//        BankAccount account = BankAccount.builder()
-//                .id(1L)
-//                .accountNumber(accountId)
-//                .balance(BigDecimal.valueOf(200)) // Suficiente para sobregiro permitido
-//                .accountType(AccountType.CHECKING)
-//                .customerId(10L)
-//                .build();
-//
-//        BankAccount updatedAccount = BankAccount.builder()
-//                .id(1L)
-//                .accountNumber(accountId)
-//                .balance(BigDecimal.valueOf(-150)) // Sobregiro permitido
-//                .accountType(AccountType.CHECKING)
-//                .customerId(10L)
-//                .build();
-//
-//        // Configurar los mocks
-//        when(bankAccountClient.getAccount(accountId)).thenReturn(Mono.just(account));
-//        when(bankAccountClient.withdraw(accountId, amount)).thenReturn(Mono.just(updatedAccount));
-//        when(transactionRepository.save(any(Transaction.class)))
-//                .thenAnswer(invocation -> Mono.just(invocation.getArgument(0)));
-//
-//        // Ejecutar el método withdraw
-//        Mono<Transaction> result = transactionService.withdraw(accountId, amount);
-//
-//        // Verificar el resultado
-//        StepVerifier.create(result)
-//                .expectNextMatches(transaction ->
-//                        transaction.getType() == TransactionType.WITHDRAWAL &&
-//                                transaction.getAmount().equals(amount) &&
-//                                transaction.getSourceAccountId().equals(accountId))
-//                .verifyComplete();
-//
-//        // Verificar interacciones
-//        verify(bankAccountClient, times(1)).getAccount(accountId);
-//        verify(bankAccountClient, times(1)).withdraw(accountId, amount);
-//        verify(transactionRepository, times(1)).save(any(Transaction.class));
-//    }
-
 
     @Test
     void withdraw_shouldRejectExcessiveOverdraftForChecking() {
         String accountId = "123";
         Double amount = 800.0;
 
-        BankAccount account = BankAccount.builder()
-                .id(1L)
-                .accountNumber(accountId)
-                .balance(BigDecimal.valueOf(200))
-                .accountType(AccountType.CHECKING)
-                .customerId(10L)
-                .build();
-
-        when(bankAccountClient.getAccount(accountId)).thenReturn(Mono.just(account));
+        when(bankAccountService.withdraw(accountId, amount))
+                .thenReturn(Mono.error(new ResponseStatusException(HttpStatus.BAD_REQUEST, "Insufficient balance")));
 
         Mono<Transaction> result = transactionService.withdraw(accountId, amount);
 
@@ -315,7 +242,7 @@ class TransactionServiceImplTest {
                         throwable.getMessage().contains("Insufficient balance"))
                 .verify();
 
-        verify(bankAccountClient, never()).withdraw(anyString(), anyDouble());
+        verify(bankAccountService, times(1)).withdraw(accountId, amount);
         verify(transactionRepository, never()).save(any(Transaction.class));
     }
 
@@ -324,7 +251,7 @@ class TransactionServiceImplTest {
         String accountId = "123";
         Double amount = 50.0;
 
-        when(bankAccountClient.getAccount(accountId))
+        when(bankAccountService.withdraw(accountId, amount))
                 .thenReturn(Mono.error(new RuntimeException("Service unavailable")));
 
         Mono<Transaction> result = transactionService.withdraw(accountId, amount);
@@ -334,8 +261,7 @@ class TransactionServiceImplTest {
                         throwable.getMessage().equals("Service unavailable"))
                 .verify();
 
-        verify(bankAccountClient, times(1)).getAccount(accountId);
-        verify(bankAccountClient, never()).withdraw(anyString(), anyDouble());
+        verify(bankAccountService, times(1)).withdraw(accountId, amount);
         verify(transactionRepository, never()).save(any(Transaction.class));
     }
 
@@ -344,16 +270,7 @@ class TransactionServiceImplTest {
         String accountId = "123";
         Double amount = 50.0;
 
-        BankAccount account = BankAccount.builder()
-                .id(1L)
-                .accountNumber(accountId)
-                .balance(BigDecimal.valueOf(300))
-                .accountType(AccountType.SAVINGS)
-                .customerId(10L)
-                .build();
-
-        when(bankAccountClient.getAccount(accountId)).thenReturn(Mono.just(account));
-        when(bankAccountClient.withdraw(accountId, amount))
+        when(bankAccountService.withdraw(accountId, amount))
                 .thenReturn(Mono.error(new RuntimeException("Withdrawal failed")));
 
         Mono<Transaction> result = transactionService.withdraw(accountId, amount);
@@ -363,8 +280,7 @@ class TransactionServiceImplTest {
                         throwable.getMessage().equals("Withdrawal failed"))
                 .verify();
 
-        verify(bankAccountClient, times(1)).getAccount(accountId);
-        verify(bankAccountClient, times(1)).withdraw(accountId, amount);
+        verify(bankAccountService, times(1)).withdraw(accountId, amount);
         verify(transactionRepository, never()).save(any(Transaction.class));
     }
 
@@ -373,24 +289,15 @@ class TransactionServiceImplTest {
         String accountId = "123";
         Double amount = 50.0;
 
-        BankAccount account = BankAccount.builder()
-                .id(1L)
-                .accountNumber(accountId)
-                .balance(BigDecimal.valueOf(300))
-                .accountType(AccountType.SAVINGS)
-                .customerId(10L)
-                .build();
-
         BankAccount updatedAccount = BankAccount.builder()
                 .id(1L)
                 .accountNumber(accountId)
-                .balance(BigDecimal.valueOf(250))
+                .balance(BigDecimal.valueOf(250)) // Balance after withdrawal
                 .accountType(AccountType.SAVINGS)
                 .customerId(10L)
                 .build();
 
-        when(bankAccountClient.getAccount(accountId)).thenReturn(Mono.just(account));
-        when(bankAccountClient.withdraw(accountId, amount)).thenReturn(Mono.just(updatedAccount));
+        when(bankAccountService.withdraw(accountId, amount)).thenReturn(Mono.just(updatedAccount));
         when(transactionRepository.save(any(Transaction.class)))
                 .thenReturn(Mono.error(new RuntimeException("Database error")));
 
@@ -401,7 +308,7 @@ class TransactionServiceImplTest {
                         throwable.getMessage().equals("Database error"))
                 .verify();
 
-        verify(bankAccountClient, times(1)).withdraw(accountId, amount);
+        verify(bankAccountService, times(1)).withdraw(accountId, amount);
         verify(transactionRepository, times(1)).save(any(Transaction.class));
     }
 
@@ -411,18 +318,10 @@ class TransactionServiceImplTest {
         String destinationAccountId = "456";
         Double amount = 100.0;
 
-        BankAccount sourceAccount = BankAccount.builder()
-                .id(1L)
-                .accountNumber(sourceAccountId)
-                .balance(BigDecimal.valueOf(300))
-                .accountType(AccountType.SAVINGS)
-                .customerId(10L)
-                .build();
-
         BankAccount updatedSourceAccount = BankAccount.builder()
                 .id(1L)
                 .accountNumber(sourceAccountId)
-                .balance(BigDecimal.valueOf(200))
+                .balance(BigDecimal.valueOf(200)) // Balance after withdrawal
                 .accountType(AccountType.SAVINGS)
                 .customerId(10L)
                 .build();
@@ -430,19 +329,23 @@ class TransactionServiceImplTest {
         BankAccount updatedDestinationAccount = BankAccount.builder()
                 .id(2L)
                 .accountNumber(destinationAccountId)
-                .balance(BigDecimal.valueOf(400))
+                .balance(BigDecimal.valueOf(400)) // Balance after deposit
                 .accountType(AccountType.SAVINGS)
                 .customerId(11L)
                 .build();
 
-        when(bankAccountClient.getAccount(sourceAccountId)).thenReturn(Mono.just(sourceAccount));
-        when(bankAccountClient.withdraw(sourceAccountId, amount)).thenReturn(Mono.just(updatedSourceAccount));
-        when(bankAccountClient.deposit(destinationAccountId, amount)).thenReturn(Mono.just(updatedDestinationAccount));
+        // Mock the behavior of BankAccountService
+        when(bankAccountService.transfer(sourceAccountId, destinationAccountId, amount))
+                .thenReturn(Mono.just(Pair.of(updatedSourceAccount, updatedDestinationAccount)));
+
+        // Mock the behavior of TransactionRepository
         when(transactionRepository.save(any(Transaction.class)))
                 .thenAnswer(invocation -> Mono.just(invocation.getArgument(0)));
 
+        // Execute the method
         Mono<Transaction> result = transactionService.transfer(sourceAccountId, destinationAccountId, amount);
 
+        // Verify the results
         StepVerifier.create(result)
                 .expectNextMatches(transaction ->
                         transaction.getType() == TransactionType.TRANSFER &&
@@ -451,9 +354,8 @@ class TransactionServiceImplTest {
                                 transaction.getDestinationAccountId().equals(destinationAccountId))
                 .verifyComplete();
 
-        verify(bankAccountClient, times(1)).getAccount(sourceAccountId);
-        verify(bankAccountClient, times(1)).withdraw(sourceAccountId, amount);
-        verify(bankAccountClient, times(1)).deposit(destinationAccountId, amount);
+        // Verify the interactions with BankAccountService and TransactionRepository
+        verify(bankAccountService, times(1)).transfer(sourceAccountId, destinationAccountId, amount);
         verify(transactionRepository, times(1)).save(any(Transaction.class));
     }
 
@@ -463,27 +365,22 @@ class TransactionServiceImplTest {
         String destinationAccountId = "456";
         Double amount = 500.0;
 
-        BankAccount sourceAccount = BankAccount.builder()
-                .id(1L)
-                .accountNumber(sourceAccountId)
-                .balance(BigDecimal.valueOf(300))
-                .accountType(AccountType.SAVINGS)
-                .customerId(10L)
-                .build();
+        // Simula el comportamiento de BankAccountService cuando el balance es insuficiente
+        when(bankAccountService.transfer(sourceAccountId, destinationAccountId, amount))
+                .thenReturn(Mono.error(new ResponseStatusException(HttpStatus.BAD_REQUEST, "Insufficient balance")));
 
-        when(bankAccountClient.getAccount(sourceAccountId)).thenReturn(Mono.just(sourceAccount));
-
+        // Ejecuta el método
         Mono<Transaction> result = transactionService.transfer(sourceAccountId, destinationAccountId, amount);
 
+        // Verifica que se propague un error adecuado
         StepVerifier.create(result)
                 .expectErrorMatches(throwable -> throwable instanceof ResponseStatusException &&
                         ((ResponseStatusException) throwable).getStatusCode() == HttpStatus.BAD_REQUEST &&
                         throwable.getMessage().contains("Insufficient balance"))
                 .verify();
 
-        verify(bankAccountClient, times(1)).getAccount(sourceAccountId);
-        verify(bankAccountClient, never()).withdraw(anyString(), anyDouble());
-        verify(bankAccountClient, never()).deposit(anyString(), anyDouble());
+        // Verifica las interacciones con BankAccountService y TransactionRepository
+        verify(bankAccountService, times(1)).transfer(sourceAccountId, destinationAccountId, amount);
         verify(transactionRepository, never()).save(any(Transaction.class));
     }
 
@@ -493,27 +390,22 @@ class TransactionServiceImplTest {
         String destinationAccountId = "456";
         Double amount = 900.0; // Exceeds overdraft limit
 
-        BankAccount sourceAccount = BankAccount.builder()
-                .id(1L)
-                .accountNumber(sourceAccountId)
-                .balance(BigDecimal.valueOf(300))
-                .accountType(AccountType.CHECKING)
-                .customerId(10L)
-                .build();
+        // Simula el comportamiento de BankAccountService cuando el monto excede el límite de sobregiro
+        when(bankAccountService.transfer(sourceAccountId, destinationAccountId, amount))
+                .thenReturn(Mono.error(new ResponseStatusException(HttpStatus.BAD_REQUEST, "Insufficient balance")));
 
-        when(bankAccountClient.getAccount(sourceAccountId)).thenReturn(Mono.just(sourceAccount));
-
+        // Ejecuta el método
         Mono<Transaction> result = transactionService.transfer(sourceAccountId, destinationAccountId, amount);
 
+        // Verifica que se propague un error adecuado
         StepVerifier.create(result)
                 .expectErrorMatches(throwable -> throwable instanceof ResponseStatusException &&
                         ((ResponseStatusException) throwable).getStatusCode() == HttpStatus.BAD_REQUEST &&
                         throwable.getMessage().contains("Insufficient balance"))
                 .verify();
 
-        verify(bankAccountClient, times(1)).getAccount(sourceAccountId);
-        verify(bankAccountClient, never()).withdraw(anyString(), anyDouble());
-        verify(bankAccountClient, never()).deposit(anyString(), anyDouble());
+        // Verifica las interacciones con BankAccountService y TransactionRepository
+        verify(bankAccountService, times(1)).transfer(sourceAccountId, destinationAccountId, amount);
         verify(transactionRepository, never()).save(any(Transaction.class));
     }
 
@@ -523,19 +415,21 @@ class TransactionServiceImplTest {
         String destinationAccountId = "456";
         Double amount = 100.0;
 
-        when(bankAccountClient.getAccount(sourceAccountId))
+        // Simula el comportamiento de BankAccountService para devolver un error al obtener los detalles de la cuenta de origen
+        when(bankAccountService.transfer(sourceAccountId, destinationAccountId, amount))
                 .thenReturn(Mono.error(new RuntimeException("Source account service unavailable")));
 
+        // Ejecuta el método
         Mono<Transaction> result = transactionService.transfer(sourceAccountId, destinationAccountId, amount);
 
+        // Verifica que se propague un error adecuado
         StepVerifier.create(result)
                 .expectErrorMatches(throwable -> throwable instanceof RuntimeException &&
                         throwable.getMessage().equals("Source account service unavailable"))
                 .verify();
 
-        verify(bankAccountClient, times(1)).getAccount(sourceAccountId);
-        verify(bankAccountClient, never()).withdraw(anyString(), anyDouble());
-        verify(bankAccountClient, never()).deposit(anyString(), anyDouble());
+        // Verifica que BankAccountService fue llamado una vez
+        verify(bankAccountService, times(1)).transfer(sourceAccountId, destinationAccountId, amount);
         verify(transactionRepository, never()).save(any(Transaction.class));
     }
 
@@ -545,28 +439,21 @@ class TransactionServiceImplTest {
         String destinationAccountId = "456";
         Double amount = 100.0;
 
-        BankAccount sourceAccount = BankAccount.builder()
-                .id(1L)
-                .accountNumber(sourceAccountId)
-                .balance(BigDecimal.valueOf(300))
-                .accountType(AccountType.SAVINGS)
-                .customerId(10L)
-                .build();
-
-        when(bankAccountClient.getAccount(sourceAccountId)).thenReturn(Mono.just(sourceAccount));
-        when(bankAccountClient.withdraw(sourceAccountId, amount))
+        // Simula el comportamiento de BankAccountService para devolver un error durante el retiro
+        when(bankAccountService.transfer(sourceAccountId, destinationAccountId, amount))
                 .thenReturn(Mono.error(new RuntimeException("Withdrawal failed")));
 
+        // Ejecuta el método
         Mono<Transaction> result = transactionService.transfer(sourceAccountId, destinationAccountId, amount);
 
+        // Verifica que se propague un error adecuado
         StepVerifier.create(result)
                 .expectErrorMatches(throwable -> throwable instanceof RuntimeException &&
                         throwable.getMessage().equals("Withdrawal failed"))
                 .verify();
 
-        verify(bankAccountClient, times(1)).getAccount(sourceAccountId);
-        verify(bankAccountClient, times(1)).withdraw(sourceAccountId, amount);
-        verify(bankAccountClient, never()).deposit(anyString(), anyDouble());
+        // Verifica que BankAccountService fue llamado una vez
+        verify(bankAccountService, times(1)).transfer(sourceAccountId, destinationAccountId, amount);
         verify(transactionRepository, never()).save(any(Transaction.class));
     }
 
@@ -576,37 +463,21 @@ class TransactionServiceImplTest {
         String destinationAccountId = "456";
         Double amount = 100.0;
 
-        BankAccount sourceAccount = BankAccount.builder()
-                .id(1L)
-                .accountNumber(sourceAccountId)
-                .balance(BigDecimal.valueOf(300))
-                .accountType(AccountType.SAVINGS)
-                .customerId(10L)
-                .build();
-
-        BankAccount updatedSourceAccount = BankAccount.builder()
-                .id(1L)
-                .accountNumber(sourceAccountId)
-                .balance(BigDecimal.valueOf(200))
-                .accountType(AccountType.SAVINGS)
-                .customerId(10L)
-                .build();
-
-        when(bankAccountClient.getAccount(sourceAccountId)).thenReturn(Mono.just(sourceAccount));
-        when(bankAccountClient.withdraw(sourceAccountId, amount)).thenReturn(Mono.just(updatedSourceAccount));
-        when(bankAccountClient.deposit(destinationAccountId, amount))
+        // Simula el comportamiento de BankAccountService para devolver un error durante el depósito en la cuenta de destino
+        when(bankAccountService.transfer(sourceAccountId, destinationAccountId, amount))
                 .thenReturn(Mono.error(new RuntimeException("Deposit failed")));
 
+        // Ejecuta el método
         Mono<Transaction> result = transactionService.transfer(sourceAccountId, destinationAccountId, amount);
 
+        // Verifica que se propague un error adecuado
         StepVerifier.create(result)
                 .expectErrorMatches(throwable -> throwable instanceof RuntimeException &&
                         throwable.getMessage().equals("Deposit failed"))
                 .verify();
 
-        verify(bankAccountClient, times(1)).getAccount(sourceAccountId);
-        verify(bankAccountClient, times(1)).withdraw(sourceAccountId, amount);
-        verify(bankAccountClient, times(1)).deposit(destinationAccountId, amount);
+        // Verifica que BankAccountService fue llamado una vez
+        verify(bankAccountService, times(1)).transfer(sourceAccountId, destinationAccountId, amount);
         verify(transactionRepository, never()).save(any(Transaction.class));
     }
 
@@ -616,18 +487,10 @@ class TransactionServiceImplTest {
         String destinationAccountId = "456";
         Double amount = 100.0;
 
-        BankAccount sourceAccount = BankAccount.builder()
-                .id(1L)
-                .accountNumber(sourceAccountId)
-                .balance(BigDecimal.valueOf(300))
-                .accountType(AccountType.SAVINGS)
-                .customerId(10L)
-                .build();
-
         BankAccount updatedSourceAccount = BankAccount.builder()
                 .id(1L)
                 .accountNumber(sourceAccountId)
-                .balance(BigDecimal.valueOf(200))
+                .balance(BigDecimal.valueOf(200)) // Balance after withdrawal
                 .accountType(AccountType.SAVINGS)
                 .customerId(10L)
                 .build();
@@ -635,29 +498,33 @@ class TransactionServiceImplTest {
         BankAccount updatedDestinationAccount = BankAccount.builder()
                 .id(2L)
                 .accountNumber(destinationAccountId)
-                .balance(BigDecimal.valueOf(400))
+                .balance(BigDecimal.valueOf(400)) // Balance after deposit
                 .accountType(AccountType.SAVINGS)
                 .customerId(11L)
                 .build();
 
-        when(bankAccountClient.getAccount(sourceAccountId)).thenReturn(Mono.just(sourceAccount));
-        when(bankAccountClient.withdraw(sourceAccountId, amount)).thenReturn(Mono.just(updatedSourceAccount));
-        when(bankAccountClient.deposit(destinationAccountId, amount)).thenReturn(Mono.just(updatedDestinationAccount));
+        // Simula el comportamiento de BankAccountService para devolver las cuentas actualizadas
+        when(bankAccountService.transfer(sourceAccountId, destinationAccountId, amount))
+                .thenReturn(Mono.just(Pair.of(updatedSourceAccount, updatedDestinationAccount)));
+
+        // Simula un error al guardar la transacción en TransactionRepository
         when(transactionRepository.save(any(Transaction.class)))
                 .thenReturn(Mono.error(new RuntimeException("Database error")));
 
+        // Ejecuta el método
         Mono<Transaction> result = transactionService.transfer(sourceAccountId, destinationAccountId, amount);
 
+        // Verifica que se propague un error adecuado
         StepVerifier.create(result)
                 .expectErrorMatches(throwable -> throwable instanceof RuntimeException &&
                         throwable.getMessage().equals("Database error"))
                 .verify();
 
-        verify(bankAccountClient, times(1)).getAccount(sourceAccountId);
-        verify(bankAccountClient, times(1)).withdraw(sourceAccountId, amount);
-        verify(bankAccountClient, times(1)).deposit(destinationAccountId, amount);
+        // Verifica las interacciones con BankAccountService y TransactionRepository
+        verify(bankAccountService, times(1)).transfer(sourceAccountId, destinationAccountId, amount);
         verify(transactionRepository, times(1)).save(any(Transaction.class));
     }
+
 
     @Test
     void getGlobalTransactionHistory_shouldReturnEmptyFlux() {
@@ -797,42 +664,6 @@ class TransactionServiceImplTest {
         verify(transactionRepository, times(1))
                 .findBySourceAccountIdOrDestinationAccountIdOrderByDateDesc(accountId, accountId);
     }
-
-//    @Test
-//    void getAccountTransactionHistory_shouldReturnTransactionsForAccount() {
-//        String accountId = "123";
-//
-//        Transaction transaction1 = Transaction.builder()
-//                .id("txn1")
-//                .type(TransactionType.DEPOSIT)
-//                .amount(100.0)
-//                .date(LocalDateTime.now())
-//                .destinationAccountId(accountId)
-//                .build();
-//
-//        Transaction transaction2 = Transaction.builder()
-//                .id("txn2")
-//                .type(TransactionType.WITHDRAWAL)
-//                .amount(50.0)
-//                .date(LocalDateTime.now().minusDays(1))
-//                .sourceAccountId(accountId)
-//                .build();
-//
-//        when(transactionRepository.findBySourceAccountIdOrDestinationAccountIdOrderByDateDesc(accountId, accountId))
-//                .thenReturn(Flux.just(transaction1, transaction2));
-//
-//        Flux<Transaction> result = transactionService.getAccountTransactionHistory(accountId);
-//
-//        StepVerifier.create(result)
-//                .expectNextMatches(transaction -> transaction.getDestinationAccountId().equals(accountId) ||
-//                        transaction.getSourceAccountId().equals(accountId))
-//                .expectNextMatches(transaction -> transaction.getDestinationAccountId().equals(accountId) ||
-//                        transaction.getSourceAccountId().equals(accountId))
-//                .verifyComplete();
-//
-//        verify(transactionRepository, times(1))
-//                .findBySourceAccountIdOrDestinationAccountIdOrderByDateDesc(accountId, accountId);
-//    }
 
     @Test
     void getAccountTransactionHistory_shouldReturnTransactionsInDescendingOrder() {

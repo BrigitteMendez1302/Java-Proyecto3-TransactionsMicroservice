@@ -1,9 +1,11 @@
 package com.example.transactionmicroservice.service.impl;
 
 import com.example.transactionmicroservice.client.BankAccountClient;
+import com.example.transactionmicroservice.factory.TransactionFactory;
 import com.example.transactionmicroservice.model.Transaction;
 import com.example.transactionmicroservice.model.TransactionType;
 import com.example.transactionmicroservice.repository.TransactionRepository;
+import com.example.transactionmicroservice.service.BankAccountService;
 import com.example.transactionmicroservice.service.TransactionService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -21,6 +23,7 @@ public class TransactionServiceImpl implements TransactionService {
 
     private final TransactionRepository transactionRepository; // Repository to manage transactions in the database.
     private final BankAccountClient bankAccountClient; // Client to interact with the Bank Account microservice.
+    private final BankAccountService bankAccountService; // Inyectado automáticamente por Spring
 
     /**
      * Performs a deposit to a specified bank account.
@@ -31,20 +34,16 @@ public class TransactionServiceImpl implements TransactionService {
      */
     @Override
     public Mono<Transaction> deposit(String accountId, Double amount) {
-        // Call the Bank Account microservice to perform the deposit
-        return bankAccountClient.deposit(accountId, amount)
+        // Use BankAccountService to perform the deposit with validations
+        return bankAccountService.deposit(accountId, amount)
                 .flatMap(updatedAccount -> {
-                    // Create a transaction record for the deposit
-                    Transaction transaction = Transaction.builder()
-                            .type(TransactionType.DEPOSIT)
-                            .amount(amount)
-                            .date(LocalDateTime.now())
-                            .destinationAccountId(accountId)
-                            .build();
+                    // Use TransactionFactory to create the transaction
+                    Transaction transaction = TransactionFactory.createDepositTransaction(accountId, amount);
                     // Save the transaction in the database
                     return transactionRepository.save(transaction);
                 });
     }
+
 
     /**
      * Performs a withdrawal from a specified bank account.
@@ -55,27 +54,11 @@ public class TransactionServiceImpl implements TransactionService {
      */
     @Override
     public Mono<Transaction> withdraw(String accountId, Double amount) {
-        // Retrieve the account details from the Bank Account microservice
-        return bankAccountClient.getAccount(accountId)
-                .flatMap(account -> {
-                    // Verify if the account has sufficient balance
-                    BigDecimal balance = account.getBalance();
-                    BigDecimal amountToWithdraw = BigDecimal.valueOf(amount);
-                    if (balance.compareTo(amountToWithdraw) < 0) {
-                        // Throw an error if the balance is insufficient
-                        return Mono.error(new ResponseStatusException(HttpStatus.BAD_REQUEST, "Insufficient balance"));
-                    }
-                    // Call the Bank Account microservice to perform the withdrawal
-                    return bankAccountClient.withdraw(accountId, amount);
-                })
+        // Use BankAccountService to handle the withdrawal with validations
+        return bankAccountService.withdraw(accountId, amount)
                 .flatMap(updatedAccount -> {
-                    // Create a transaction record for the withdrawal
-                    Transaction transaction = Transaction.builder()
-                            .type(TransactionType.WITHDRAWAL)
-                            .amount(amount)
-                            .date(LocalDateTime.now())
-                            .sourceAccountId(accountId)
-                            .build();
+                    // Use TransactionFactory to create the withdrawal transaction
+                    Transaction transaction = TransactionFactory.createWithdrawTransaction(accountId, amount);
                     // Save the transaction in the database
                     return transactionRepository.save(transaction);
                 });
@@ -91,33 +74,16 @@ public class TransactionServiceImpl implements TransactionService {
      */
     @Override
     public Mono<Transaction> transfer(String sourceAccountId, String destinationAccountId, Double amount) {
-        // Retrieve the source account details from the Bank Account microservice
-        return bankAccountClient.getAccount(sourceAccountId)
-                .flatMap(sourceAccount -> {
-                    // Verify if the source account has sufficient balance
-                    BigDecimal balance = sourceAccount.getBalance();
-                    BigDecimal amountToWithdraw = BigDecimal.valueOf(amount);
-                    if (balance.compareTo(amountToWithdraw) < 0) {
-                        // Throw an error if the balance is insufficient
-                        return Mono.error(new ResponseStatusException(HttpStatus.BAD_REQUEST, "Insufficient balance"));
-                    }
-                    // Call the Bank Account microservice to perform the withdrawal from the source account
-                    return bankAccountClient.withdraw(sourceAccountId, amount);
-                })
-                .flatMap(updatedSourceAccount -> {
-                    // Call the Bank Account microservice to perform the deposit into the destination account
-                    return bankAccountClient.deposit(destinationAccountId, amount);
-                })
-                .flatMap(updatedDestinationAccount -> {
-                    // Create a transaction record for the transfer
-                    Transaction transaction = Transaction.builder()
-                            .type(TransactionType.TRANSFER)
-                            .amount(amount)
-                            .date(LocalDateTime.now())
-                            .sourceAccountId(sourceAccountId)
-                            .destinationAccountId(destinationAccountId)
-                            .build();
-                    // Save the transaction in the database
+        return bankAccountService.transfer(sourceAccountId, destinationAccountId, amount)
+                .flatMap(accounts -> {
+                    Transaction transaction = TransactionFactory.createTransferTransaction(
+                            sourceAccountId,          // The account from which the funds are transferred
+                            destinationAccountId,     // The account to which the funds are deposited
+                            amount                    // The amount being transferred
+                    );
+
+                    // Save the transaction record in the database using the TransactionRepository
+                    // This ensures that the transfer details are persisted for future reference.
                     return transactionRepository.save(transaction);
                 });
     }
