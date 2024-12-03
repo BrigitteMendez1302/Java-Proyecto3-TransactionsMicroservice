@@ -1,6 +1,5 @@
 package com.example.transactionmicroservice.service.impl;
 
-import com.example.transactionmicroservice.client.BankAccountClient;
 import com.example.transactionmicroservice.model.AccountType;
 import com.example.transactionmicroservice.model.BankAccount;
 import com.example.transactionmicroservice.model.Transaction;
@@ -29,9 +28,6 @@ class TransactionServiceImplTest {
 
     @Mock
     private TransactionRepository transactionRepository;
-
-    @Mock
-    private BankAccountClient bankAccountClient;
 
     @InjectMocks
     private TransactionServiceImpl transactionService;
